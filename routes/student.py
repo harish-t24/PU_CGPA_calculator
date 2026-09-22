@@ -60,6 +60,11 @@ def dashboard():
     # Fetch all grades to display in tables
     db_grades = conn.execute("SELECT * FROM grades WHERE username = ?", (username,)).fetchall()
     
+    # Calculate grade stats for student profile overview
+    arrears_count = sum(1 for row in db_grades if row["grade"] in ("F", "FR"))
+    a_plus_count = sum(1 for row in db_grades if row["grade"] == "A+")
+    a_count = sum(1 for row in db_grades if row["grade"] == "A")
+
     # Organize grades for the template
     gradesData = {}
     for row in db_grades:
@@ -96,7 +101,10 @@ def dashboard():
         register_number=user_row["register_number"],
         department=dept,
         current_sem_grades=current_sem_grades,
-        profile_pic=user_row["profile_pic"]
+        profile_pic=user_row["profile_pic"],
+        arrears_count=arrears_count,
+        a_plus_count=a_plus_count,
+        a_count=a_count
     )
 
 @student_bp.route("/dashboard/clear/<sem>", methods=["POST"])

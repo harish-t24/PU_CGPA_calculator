@@ -40,39 +40,67 @@ def admin():
     offset = (page - 1) * per_page
     
     # Validate sorting parameters to prevent SQL injection
-    valid_columns = ["username", "register_number", "department", "cgpa"]
+    valid_columns = ["username", "register_number", "department", "cgpa", "arrears"]
     if sort_by not in valid_columns:
         sort_by = "username"
     if order not in ["asc", "desc"]:
         order = "asc"
     
-    base_query = "FROM users WHERE is_admin = 0"
+    db_sort_column = "arrears" if sort_by == "arrears" else f"u.{sort_by}"
+
+    base_where = "WHERE u.is_admin = 0"
     params = []
     
     if filter_dept:
-        base_query += " AND department = ?"
+        base_where += " AND u.department = ?"
         params.append(filter_dept)
         
     if filter_cgpa:
         try:
             min_cgpa_val = float(filter_cgpa)
-            base_query += " AND cgpa >= ?"
+            base_where += " AND u.cgpa >= ?"
             params.append(min_cgpa_val)
         except ValueError:
             filter_cgpa = "" 
 
     if search_query:
-        base_query += " AND (username LIKE ? OR register_number LIKE ?)"
+        base_where += " AND (u.username LIKE ? OR u.register_number LIKE ?)"
         params.append(f"%{search_query}%")
         params.append(f"%{search_query}%")
             
     # Count total results for pagination
-    count_query = f"SELECT COUNT(*) {base_query}"
+    count_query = f"SELECT COUNT(*) FROM users u {base_where}"
     total_results = conn.execute(count_query, params).fetchone()[0]
     total_pages = (total_results + per_page - 1) // per_page
     
-    # Fetch paginated results
-    query = f"SELECT username, register_number, department, cgpa {base_query} ORDER BY {sort_by} {order.upper()} LIMIT ? OFFSET ?"
+    # Summary stats for Admin Dashboard
+    total_system_arrears = conn.execute(
+        "SELECT COUNT(*) FROM grades g JOIN users u ON g.username = u.username WHERE u.is_admin = 0 AND g.grade IN ('F', 'FR')"
+    ).fetchone()[0]
+    students_with_arrears = conn.execute(
+        "SELECT COUNT(DISTINCT g.username) FROM grades g JOIN users u ON g.username = u.username WHERE u.is_admin = 0 AND g.grade IN ('F', 'FR')"
+    ).fetchone()[0]
+
+    # Fetch paginated results with grade stats
+    query = f"""
+        SELECT 
+            u.username, u.register_number, u.department, u.cgpa,
+            COALESCE(g.arrears_count, 0) AS arrears,
+            COALESCE(g.a_plus_count, 0) AS a_plus_count,
+            COALESCE(g.a_count, 0) AS a_count
+        FROM users u
+        LEFT JOIN (
+            SELECT username,
+                COUNT(CASE WHEN grade IN ('F', 'FR') THEN 1 END) AS arrears_count,
+                COUNT(CASE WHEN grade = 'A+' THEN 1 END) AS a_plus_count,
+                COUNT(CASE WHEN grade = 'A' THEN 1 END) AS a_count
+            FROM grades
+            GROUP BY username
+        ) g ON u.username = g.username
+        {base_where}
+        ORDER BY {db_sort_column} {order.upper()}
+        LIMIT ? OFFSET ?
+    """
     paginated_params = params + [per_page, offset]
     
     users = conn.execute(query, paginated_params).fetchall()
@@ -89,7 +117,9 @@ def admin():
                            order=order,
                            page=page,
                            total_pages=total_pages,
-                           total_results=total_results)
+                           total_results=total_results,
+                           total_system_arrears=total_system_arrears,
+                           students_with_arrears=students_with_arrears)
 
 @admin_bp.route("/admin/user/<username>")
 def admin_user(username):
@@ -103,6 +133,10 @@ def admin_user(username):
         return "User not found"
 
     db_grades = conn.execute("SELECT * FROM grades WHERE username = ?", (username,)).fetchall()
+    arrears_count = sum(1 for row in db_grades if row["grade"] in ("F", "FR"))
+    a_plus_count = sum(1 for row in db_grades if row["grade"] == "A+")
+    a_count = sum(1 for row in db_grades if row["grade"] == "A")
+
     gradesData = {}
     for row in db_grades:
         s = row["semester"]
@@ -119,6 +153,9 @@ def admin_user(username):
     # Mocking user object for template compatibility
     user_dict = dict(user)
     user_dict["gradesData"] = gradesData
+    user_dict["arrears"] = arrears_count
+    user_dict["a_plus_count"] = a_plus_count
+    user_dict["a_count"] = a_count
     
     return render_template("student_details.html", username=username, user=user_dict)
 
@@ -201,7 +238,7 @@ def export_excel():
     ws = wb.active
     ws.title = "Student Results"
     
-    headers = ["Name", "Register Number", "Department"] + [f"Sem {i} SGPA" for i in range(1, 9)] + ["CGPA"]
+    headers = ["Name", "Register Number", "Department"] + [f"Sem {i} SGPA" for i in range(1, 9)] + ["CGPA", "Arrears", "A+ Count", "A Count"]
     ws.append(headers)
     for cell in ws[1]: cell.font = Font(bold=True)
 
@@ -210,10 +247,17 @@ def export_excel():
         user_grades = conn.execute("SELECT semester, grade, credit FROM grades WHERE username = ?", (user["username"],)).fetchall()
         
         sem_stats = {}
+        arr_cnt = 0
+        ap_cnt = 0
+        a_cnt = 0
         for g in user_grades:
             s = g["semester"]
+            gr = g["grade"]
+            if gr in ("F", "FR"): arr_cnt += 1
+            if gr == "A+": ap_cnt += 1
+            if gr == "A": a_cnt += 1
             if s not in sem_stats: sem_stats[s] = {"p": 0, "c": 0}
-            sem_stats[s]["p"] += grade_map[g["grade"]] * g["credit"]
+            sem_stats[s]["p"] += grade_map[gr] * g["credit"]
             sem_stats[s]["c"] += g["credit"]
         
         for i in range(1, 9):
@@ -224,6 +268,9 @@ def export_excel():
                 row.append("-")
         
         row.append(user["cgpa"] or "-")
+        row.append(arr_cnt)
+        row.append(ap_cnt)
+        row.append(a_cnt)
         ws.append(row)
 
     conn.close()

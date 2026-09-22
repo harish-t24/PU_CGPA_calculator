@@ -127,8 +127,12 @@ def profile():
         return redirect("/profile")
         
     user = conn.execute("SELECT * FROM users WHERE username = ?", (current_username,)).fetchone()
+    all_user_grades = conn.execute("SELECT grade FROM grades WHERE username = ?", (current_username,)).fetchall()
+    arrears_count = sum(1 for g in all_user_grades if g["grade"] in ("F", "FR"))
+    a_plus_count = sum(1 for g in all_user_grades if g["grade"] == "A+")
+    a_count = sum(1 for g in all_user_grades if g["grade"] == "A")
     conn.close()
-    return render_template("profile.html", user=user)
+    return render_template("profile.html", user=user, arrears_count=arrears_count, a_plus_count=a_plus_count, a_count=a_count)
 
 @auth_bp.route("/logout")
 def logout():

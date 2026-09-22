@@ -84,6 +84,36 @@
     </div>
     
     <div class="col-lg-5 offset-lg-1">
+        <div class="neo-card neo-card-hero mb-4">
+            <h4 class="mb-3 text-uppercase">Academic Summary</h4>
+            <div class="row g-2 text-center fw-bold">
+                <div class="col-6">
+                    <div class="neo-border bg-white p-2">
+                        <div class="small text-uppercase opacity-75">CGPA</div>
+                        <div class="fs-4 text-primary">{{ user.cgpa if user.cgpa else '0.0' }}</div>
+                    </div>
+                </div>
+                <div class="col-6">
+                    <div class="neo-border p-2" style="background-color: {% if arrears_count > 0 %}#ff6b6b{% else %}#ffffff{% endif %};">
+                        <div class="small text-uppercase opacity-75 {% if arrears_count > 0 %}text-white{% endif %}">Arrears</div>
+                        <div class="fs-4 {% if arrears_count > 0 %}text-white{% endif %}">{{ arrears_count }}</div>
+                    </div>
+                </div>
+                <div class="col-6">
+                    <div class="neo-border p-2" style="background-color: #51cf66;">
+                        <div class="small text-uppercase opacity-75">A+ Grades</div>
+                        <div class="fs-4">{{ a_plus_count }}</div>
+                    </div>
+                </div>
+                <div class="col-6">
+                    <div class="neo-border p-2" style="background-color: var(--nav-sage);">
+                        <div class="small text-uppercase opacity-75">A Grades</div>
+                        <div class="fs-4">{{ a_count }}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <div class="neo-card neo-card-data">
             <h4 class="mb-3 text-uppercase">Security Note</h4>
             <p class="fw-bold">

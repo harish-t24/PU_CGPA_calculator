@@ -2,7 +2,18 @@
 # app.py - Main Entry Point
 # ==========================================
 
+import sys
 import os
+
+# Auto-detect and use local virtual environment if available
+project_dir = os.path.dirname(os.path.abspath(__file__))
+venv_python = os.path.join(project_dir, "venv", "bin", "python3")
+if not os.path.exists(venv_python):
+    venv_python = os.path.join(project_dir, "venv", "bin", "python")
+
+if sys.prefix == sys.base_prefix and os.path.exists(venv_python):
+    os.execv(venv_python, [venv_python] + sys.argv)
+
 from flask import Flask, session, redirect, send_from_directory
 from dotenv import load_dotenv
 from flask_wtf.csrf import CSRFProtect
